@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090909">
+<title>Wayback Web Restorer</title>
+<style>
+:root{--bg:#070707;--panel:#101010;--panel2:#151515;--line:#292929;--text:#f3f3f3;--muted:#9b9b9b;--accent:#ff2b2b;--accent2:#ff5555}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -20%,#351010 0,#070707 42%);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif;min-height:100vh}
+header{padding:34px 18px 20px;text-align:center;border-bottom:1px solid var(--line);background:#080808dd;backdrop-filter:blur(12px);position:sticky;top:0;z-index:5}
+.logo{font-size:34px;font-weight:900;letter-spacing:-1px}.logo span{color:var(--accent)}
+.sub{color:var(--muted);margin-top:8px;font-size:14px}
+main{max-width:1100px;margin:auto;padding:24px 16px 50px}.searchbox{display:flex;gap:10px;background:var(--panel);border:1px solid var(--line);padding:12px;border-radius:16px;box-shadow:0 12px 50px #0008}
+input{flex:1;background:#080808;border:1px solid #333;color:#fff;border-radius:11px;padding:14px;font-size:16px;outline:none}input:focus{border-color:var(--accent)}
+button{border:0;border-radius:11px;padding:0 18px;font-weight:800;cursor:pointer;background:var(--accent);color:#fff;min-height:48px}button:hover{background:var(--accent2)}button.secondary{background:#222;border:1px solid #393939}button:disabled{opacity:.5;cursor:not-allowed}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.controls label{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);padding:9px 12px;border-radius:10px}.controls select{background:#090909;color:#fff;border:1px solid #333;border-radius:7px;padding:5px}
+.status{margin:16px 0;color:var(--muted);min-height:22px}.error{color:#ff7777}.ok{color:#72ff9a}
+.card{background:linear-gradient(145deg,#111,#0b0b0b);border:1px solid var(--line);border-radius:15px;padding:16px;margin:10px 0}
+.row{display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap}.date{font-weight:900;font-size:17px}.meta{color:var(--muted);font-size:12px;margin-top:4px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions a{display:inline-flex;align-items:center;text-decoration:none;color:#fff;background:#202020;border:1px solid #393939;padding:9px 12px;border-radius:9px;font-size:13px;font-weight:700}.actions a.primary{background:var(--accent);border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:18px}.info{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}.info h3{margin:0 0 8px}.info p{color:var(--muted);font-size:13px;line-height:1.5;margin:0}
+.hidden{display:none}.spinner{display:inline-block;width:15px;height:15px;border:2px solid #555;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-3px;margin-right:7px}@keyframes spin{to{transform:rotate(360deg)}}
+footer{text-align:center;color:#666;font-size:12px;padding:25px}
+code{color:#ff8b8b}
+@media(max-width:620px){.searchbox{flex-direction:column}button{width:100%}.logo{font-size:27px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">WAYBACK <span>WEB RESTORER</span></div>
+  <div class="sub">Search archived versions of old, deleted, moved, or still-live websites.</div>
+</header>
+
+<main>
+  <div class="searchbox">
+    <input id="url" placeholder="example.com, https://example.com/page, or a full URL" autocomplete="off" spellcheck="false">
+    <button id="searchBtn">SEARCH ARCHIVE</button>
+  </div>
+
+  <div class="controls">
+    <label>Results <select id="limit"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label>
+    <label>Mode <select id="mode"><option value="exact">Exact URL</option><option value="domain">Whole domain</option></select></label>
+    <button class="secondary" id="currentBtn">CHECK CURRENT ARCHIVE</button>
+  </div>
+
+  <div id="status" class="status">Enter a URL or domain to begin.</div>
+  <section id="results"></section>
+
+  <div class="grid">
+    <div class="info"><h3>What it does</h3><p>Uses the Internet Archive Wayback Machine APIs directly from your browser. It can find historical captures even when the original page no longer exists.</p></div>
+    <div class="info"><h3>Open old versions</h3><p>Every result links to the archived snapshot. Resources such as images, CSS, and scripts may be incomplete depending on how the original site was captured.</p></div>
+    <div class="info"><h3>Privacy</h3><p>This static page does not need your own server. Searches are sent to the Internet Archive because its public API performs the archive lookup.</p></div>
+  </div>
+</main>
+<footer>Wayback Web Restorer • Static GitHub Pages project • Internet Archive is a separate service</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const status = $('status'), results = $('results');
+
+function normalizeUrl(value){
+  value=value.trim();
+  if(!value) return '';
+  if(!/^https?:\/\//i.test(value)) value='https://'+value;
+  try { return new URL(value).href; } catch(e){ return ''; }
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+function fmtDate(ts){
+  if(!ts || ts.length<14) return ts;
+  const d=new Date(ts.slice(0,4)+'-'+ts.slice(4,6)+'-'+ts.slice(6,8)+'T'+ts.slice(8,10)+':'+ts.slice(10,12)+':'+ts.slice(12,14)+'Z');
+  return isNaN(d)?ts:d.toLocaleString();
+}
+function setStatus(html, cls=''){status.className='status '+cls;status.innerHTML=html}
+function archiveUrl(ts, original){return 'https://web.archive.org/web/'+encodeURIComponent(ts)+'/'+original}
+
+async function searchArchive(){
+  const raw=$('url').value, target=normalizeUrl(raw);
+  if(!target){setStatus('Please enter a valid URL or domain.','error');return}
+  const mode=$('mode').value, limit=Number($('limit').value);
+  results.innerHTML='';
+  setStatus('<span class="spinner"></span>Querying the Internet Archive…');
+  const u=new URL(target);
+  let query=mode==='domain'
+    ? `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(u.hostname)}/*&output=json&fl=timestamp,original,statuscode,mimetype,digest&filter=statuscode:200&collapse=digest&limit=${limit}&from=1996`
+    : `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(target)}&output=json&fl=timestamp,original,statuscode,mimetype,digest&filter=statuscode:200&collapse=digest&limit=${limit}&from=1996`;
+  try{
+    const r=await fetch(query,{headers:{'Accept':'application/json'}});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    if(!Array.isArray(data) || data.length<2){
+      setStatus('No archived captures were returned for this query. Try Whole domain mode or a different URL.','error');
+      return;
+    }
+    const rows=data.slice(1);
+    setStatus(`Found <b>${rows.length}</b> archived capture(s).`);
+    const frag=document.createDocumentFragment();
+    rows.forEach(row=>{
+      const [ts,original,statusCode,mime,digest]=row;
+      const card=document.createElement('article');card.className='card';
+      const a=archiveUrl(ts,original);
+      card.innerHTML=`<div class="row">
+        <div><div class="date">${escapeHtml(fmtDate(ts))}</div>
+        <div class="meta">${escapeHtml(original)} · ${escapeHtml(mime||'unknown')} · HTTP ${escapeHtml(statusCode||'')}</div></div>
+        <div class="actions"><a class="primary" target="_blank" rel="noopener" href="${a}">OPEN SNAPSHOT</a>
+        <a target="_blank" rel="noopener" href="https://web.archive.org/web/${encodeURIComponent(ts)}id_/${original}">RAW / ORIGINAL</a></div>
+      </div>`;
+      frag.appendChild(card);
+    });
+    results.appendChild(frag);
+  }catch(e){
+    console.error(e);
+    setStatus('Archive API request failed. Your browser/network may be blocking cross-origin requests, or the Internet Archive API may be temporarily unavailable. Try again later.','error');
+  }
+}
+
+async function currentArchive(){
+  const target=normalizeUrl($('url').value);
+  if(!target){setStatus('Please enter a valid URL or domain.','error');return}
+  results.innerHTML='';
+  setStatus('<span class="spinner"></span>Checking the Wayback availability API…');
+  try{
+    const api='https://archive.org/wayback/available?url='+encodeURIComponent(target);
+    const r=await fetch(api); if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json(), snap=data.archived_snapshots && data.archived_snapshots.closest;
+    if(!snap){setStatus('No closest archived snapshot was found.','error');return}
+    setStatus('Closest available snapshot found.','ok');
+    results.innerHTML=`<article class="card"><div class="row">
+      <div><div class="date">${escapeHtml(fmtDate(snap.timestamp))}</div>
+      <div class="meta">${escapeHtml(target)} · available: ${snap.available ? 'yes':'no'}</div></div>
+      <div class="actions"><a class="primary" target="_blank" rel="noopener" href="${snap.url}">OPEN SNAPSHOT</a></div>
+    </div></article>`;
+  }catch(e){
+    setStatus('Availability API request failed. Check your connection and try again.','error');
+  }
+}
+$('searchBtn').onclick=searchArchive;
+$('currentBtn').onclick=currentArchive;
+$('url').addEventListener('keydown',e=>{if(e.key==='Enter')searchArchive()});
+$('mode').addEventListener('change',()=>{ if($('url').value.trim()) searchArchive(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+This project contains original frontend code created for the requester.
+
+The Internet Archive / Wayback Machine is an external service. This project does not claim ownership of archived websites or archived content.
+
+Use archived content according to the rights and terms applicable to that content and the Internet Archive service.
